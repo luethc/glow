@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+<title>Glow — Studio Light Effect</title>
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icon.svg" />
+<link rel="apple-touch-icon" href="icon.svg" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#0e0e10" />
+<style>
+  :root {
+    --bg: #0e0e10;
+    --panel: #1b1b1f;
+    --panel2: #232328;
+    --line: #2e2e34;
+    --text: #f2f0ec;
+    --sub: #9a9aa2;
+    --accent: #ffdf9e;
+    --accent-dim: #7a6a45;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    overscroll-behavior-y: none;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  header {
+    padding: 18px 20px 10px;
+    text-align: center;
+  }
+  header h1 {
+    margin: 0;
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  header h1 .ring {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #fff, var(--accent) 60%, transparent 75%);
+    margin-right: 8px;
+    vertical-align: middle;
+    box-shadow: 0 0 10px 2px rgba(255,223,158,0.5);
+  }
+  header p {
+    margin: 4px 0 0;
+    font-size: 12.5px;
+    color: var(--sub);
+  }
+
+  main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 10px 16px 16px;
+    gap: 14px;
+    min-height: 0;
+  }
+
+  .stage {
+    flex: 1;
+    min-height: 0;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .stage canvas {
+    max-width: 100%;
+    max-height: 100%;
+    display: block;
+    touch-action: none;
+    border-radius: 12px;
+  }
+  .empty {
+    text-align: center;
+    color: var(--sub);
+    padding: 30px;
+  }
+  .empty .icn {
+    width: 56px; height: 56px;
+    margin: 0 auto 14px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, #3a3a40, #17171a 70%);
+    box-shadow: inset 0 0 0 6px #0e0e10, 0 0 0 2px var(--line);
+    position: relative;
+  }
+  .empty .icn::after {
+    content: "";
+    position: absolute; inset: -8px;
+    border-radius: 50%;
+    border: 2px solid var(--accent-dim);
+    opacity: 0.6;
+  }
+  .empty p { margin: 0; font-size: 13.5px; line-height: 1.5; }
+
+  .compare-badge {
+    position: absolute;
+    top: 10px; left: 10px;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(6px);
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 5px 10px;
+    border-radius: 100px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .compare-badge.show { opacity: 1; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 14px 16px 16px;
+    display: none;
+  }
+  .panel.active { display: block; }
+
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .slider-row label {
+    font-size: 12.5px;
+    color: var(--sub);
+    width: 58px;
+    flex-shrink: 0;
+  }
+  input[type="range"] {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    border-radius: 4px;
+    background: var(--line);
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 4px rgba(255,223,158,0.18);
+    cursor: pointer;
+  }
+  .value-pill {
+    font-variant-numeric: tabular-nums;
+    font-size: 12.5px;
+    color: var(--text);
+    width: 34px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .presets {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .preset-btn {
+    flex: 1;
+    background: var(--panel2);
+    border: 1px solid var(--line);
+    color: var(--sub);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 9px 6px;
+    border-radius: 10px;
+    text-align: center;
+  }
+  .preset-btn.active {
+    color: #17140c;
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .actions {
+    display: flex;
+    gap: 10px;
+  }
+  button.big {
+    flex: 1;
+    padding: 14px 12px;
+    border-radius: 14px;
+    font-size: 15px;
+    font-weight: 600;
+    border: none;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: #17140c;
+  }
+  .btn-secondary {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--text);
+  }
+  .btn-ghost {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--sub);
+  }
+
+  #fileInput { display: none; }
+
+  .hint {
+    text-align: center;
+    font-size: 11.5px;
+    color: var(--sub);
+    margin: -2px 0 0;
+  }
+
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(24px + env(safe-area-inset-bottom));
+    transform: translateX(-50%) translateY(10px);
+    background: var(--panel2);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 10px 16px;
+    border-radius: 100px;
+    font-size: 13px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+    z-index: 50;
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span class="ring"></span>Glow</h1>
+  <p>Studio ringlight, right from your camera roll</p>
+</header>
+
+<main>
+  <div class="stage" id="stage">
+    <div class="empty" id="emptyState">
+      <div class="icn"></div>
+      <p>Pick a photo to add<br/>soft studio light</p>
+    </div>
+    <canvas id="canvas" style="display:none"></canvas>
+    <div class="compare-badge" id="compareBadge">Original</div>
+  </div>
+
+  <div class="panel" id="controlsPanel">
+    <div class="slider-row">
+      <label for="intensity">Strength</label>
+      <input type="range" id="intensity" min="0" max="100" value="65" />
+      <span class="value-pill" id="intensityValue">65%</span>
+    </div>
+    <div class="presets" id="presets">
+      <div class="preset-btn" data-warmth="-1">Cool</div>
+      <div class="preset-btn active" data-warmth="0">Neutral</div>
+      <div class="preset-btn" data-warmth="1">Warm</div>
+    </div>
+    <p class="hint">Hold the photo to compare with the original</p>
+  </div>
+
+  <div class="actions">
+    <button class="big btn-ghost" id="newPhotoBtn" style="display:none">New Photo</button>
+    <button class="big btn-secondary" id="pickBtn">Choose Photo</button>
+    <button class="big btn-primary" id="saveBtn" style="display:none">Save</button>
+  </div>
+</main>
+
+<input type="file" id="fileInput" accept="image/*" />
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  const stage = document.getElementById('stage');
+  const emptyState = document.getElementById('emptyState');
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: false });
+  const fileInput = document.getElementById('fileInput');
+  const pickBtn = document.getElementById('pickBtn');
+  const newPhotoBtn = document.getElementById('newPhotoBtn');
+  const saveBtn = document.getElementById('saveBtn');
+  const controlsPanel = document.getElementById('controlsPanel');
+  const intensitySlider = document.getElementById('intensity');
+  const intensityValue = document.getElementById('intensityValue');
+  const presets = document.getElementById('presets');
+  const compareBadge = document.getElementById('compareBadge');
+  const toastEl = document.getElementById('toast');
+
+  let img = null;
+  let warmth = 0; // -1 cool, 0 neutral, 1 warm
+  let showingOriginal = false;
+  let rafPending = false;
+
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastEl._t);
+    toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 2200);
+  }
+
+  // ---- The studio-light / ringlight effect ----
+  // Approach: a bright, evenly-lit "beauty" look with fill-flash-style
+  // shadow lift, gently cooled or warmed highlights, and a soft
+  // center-weighted glow that falls off toward the edges (mimicking how a
+  // ringlight wraps a subject in even, frontal light with subtle falloff).
+  function render() {
+    if (!img) return;
+    const w = canvas.width, h = canvas.height;
+    const t = intensitySlider.value / 100; // 0..1 strength
+
+    ctx.clearRect(0, 0, w, h);
+
+    if (showingOriginal || t === 0) {
+      ctx.filter = 'none';
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 1;
+      ctx.drawImage(img, 0, 0, w, h);
+      return;
+    }
+
+    // 1) Base exposure/contrast/saturation lift — the overall "flash" punch
+    const brightness = 1 + 0.22 * t;
+    const contrast = 1 + 0.14 * t;
+    const saturate = 1 + 0.06 * t;
+    ctx.filter = `brightness(${brightness}) contrast(${contrast}) saturate(${saturate})`;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.drawImage(img, 0, 0, w, h);
+    ctx.filter = 'none';
+
+    // 2) Fill-flash shadow lift — a soft, blurred, brightened pass screened
+    // on top opens up shadows the way a ringlight's broad, diffuse source does.
+    const blurPx = Math.max(4, Math.min(w, h) * 0.02);
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = 0.32 * t;
+    ctx.filter = `blur(${blurPx}px) brightness(1.35)`;
+    ctx.drawImage(img, 0, 0, w, h);
+    ctx.restore();
+    ctx.filter = 'none';
+
+    // 3) White balance tint (cool/neutral/warm) via a soft overlay wash.
+    if (warmth !== 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'overlay';
+      ctx.globalAlpha = 0.16 * t;
+      ctx.fillStyle = warmth > 0 ? 'rgba(255,214,168,1)' : 'rgba(200,222,255,1)';
+      ctx.fillRect(0, 0, w, h);
+      ctx.restore();
+    }
+
+    // 4) Center-weighted glow with edge falloff — the ringlight signature:
+    // even, bright light on the subject, gently darkening toward the frame edge.
+    ctx.save();
+    const cx = w / 2, cy = h * 0.44;
+    const r = Math.max(w, h) * 0.8;
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    grad.addColorStop(0, `rgba(255,255,255,${0.14 * t})`);
+    grad.addColorStop(0.5, 'rgba(255,255,255,0)');
+    grad.addColorStop(1, `rgba(0,0,0,${0.24 * t})`);
+    ctx.globalCompositeOperation = 'overlay';
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+  }
+
+  function scheduleRender() {
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(() => {
+      rafPending = false;
+      render();
+    });
+  }
+
+  function loadImage(file) {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      img = image;
+      const maxDim = 2000; // keep interaction snappy; still plenty for sharing
+      let w = image.naturalWidth, h = image.naturalHeight;
+      if (Math.max(w, h) > maxDim) {
+        const scale = maxDim / Math.max(w, h);
+        w = Math.round(w * scale);
+        h = Math.round(h * scale);
+      }
+      canvas.width = w;
+      canvas.height = h;
+      emptyState.style.display = 'none';
+      canvas.style.display = 'block';
+      controlsPanel.classList.add('active');
+      pickBtn.style.display = 'none';
+      newPhotoBtn.style.display = 'block';
+      saveBtn.style.display = 'block';
+      render();
+      URL.revokeObjectURL(url);
+    };
+    image.onerror = () => toast("Couldn't open that photo — try another.");
+    image.src = url;
+  }
+
+  pickBtn.addEventListener('click', () => fileInput.click());
+  newPhotoBtn.addEventListener('click', () => fileInput.click());
+
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) loadImage(file);
+    fileInput.value = '';
+  });
+
+  intensitySlider.addEventListener('input', () => {
+    intensityValue.textContent = intensitySlider.value + '%';
+    scheduleRender();
+  });
+
+  presets.addEventListener('click', (e) => {
+    const btn = e.target.closest('.preset-btn');
+    if (!btn) return;
+    warmth = parseInt(btn.dataset.warmth, 10);
+    [...presets.children].forEach((c) => c.classList.toggle('active', c === btn));
+    scheduleRender();
+  });
+
+  // Hold-to-compare with the original photo.
+  function startCompare(e) {
+    if (!img) return;
+    showingOriginal = true;
+    compareBadge.classList.add('show');
+    render();
+  }
+  function endCompare() {
+    if (!img) return;
+    showingOriginal = false;
+    compareBadge.classList.remove('show');
+    render();
+  }
+  canvas.addEventListener('pointerdown', startCompare);
+  canvas.addEventListener('pointerup', endCompare);
+  canvas.addEventListener('pointercancel', endCompare);
+  canvas.addEventListener('pointerleave', endCompare);
+
+  saveBtn.addEventListener('click', async () => {
+    if (!img) return;
+    canvas.toBlob(async (blob) => {
+      if (!blob) return toast("Couldn't save — try again.");
+      const file = new File([blob], 'glow-photo.jpg', { type: 'image/jpeg' });
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: 'Glow photo' });
+          return;
+        } catch (err) {
+          if (err && err.name === 'AbortError') return; // user cancelled
+        }
+      }
+
+      // Fallback: plain download
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'glow-photo.jpg';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast('Saved to Downloads');
+    }, 'image/jpeg', 0.92);
+  });
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
+})();
+</script>
+</body>
+</html>
