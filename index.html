@@ -320,6 +320,15 @@
   let showingOriginal = false;
   let rafPending = false;
 
+  // Reusable offscreen buffers for building the flash layer (avoids
+  // allocating full-size canvases on every slider tick).
+  const bufA = document.createElement('canvas');
+  const bufB = document.createElement('canvas');
+  const bufC = document.createElement('canvas');
+  const bufCtxA = bufA.getContext('2d');
+  const bufCtxB = bufB.getContext('2d');
+  const bufCtxC = bufC.getContext('2d');
+
   function toast(msg) {
     toastEl.textContent = msg;
     toastEl.classList.add('show');
@@ -328,71 +337,111 @@
   }
 
   // ---- The studio-light / ringlight effect ----
-  // Approach: a bright, evenly-lit "beauty" look with fill-flash-style
-  // shadow lift, gently cooled or warmed highlights, and a soft
-  // center-weighted glow that falls off toward the edges (mimicking how a
-  // ringlight wraps a subject in even, frontal light with subtle falloff).
+  // A real flash or ringlight falls off with distance: whatever's closest to
+  // the camera gets hit hard, the background barely gets any of it. We fake
+  // "distance" using frame position — center-weighted, since that's usually
+  // where the subject is — and build a "fully lit" version of the photo,
+  // masked so it's bright in the middle and fades to the *unlit*, dimmer
+  // original toward the edges. The Strength slider then cross-fades between
+  // the untouched original and that fully-lit-with-falloff result, so 0% is
+  // always the real photo and 100% is the full falloff look.
+  function buildFlashLayer(w, h) {
+    bufA.width = w; bufA.height = h;
+    bufB.width = w; bufB.height = h;
+    bufC.width = w; bufC.height = h;
+
+    // Dimmed ambient base — what the light doesn't reach.
+    bufCtxA.filter = 'brightness(0.74) contrast(1.05)';
+    bufCtxA.drawImage(img, 0, 0, w, h);
+    bufCtxA.filter = 'none';
+
+    // Fully-lit version, built with "screen" blending rather than a flat
+    // brightness multiply — screen has diminishing returns as pixels near
+    // white, so highlights (a window, a bright wall) glow instead of
+    // clipping to solid white the way a plain brightness() filter would.
+    bufCtxC.clearRect(0, 0, w, h);
+    bufCtxC.filter = 'none';
+    bufCtxC.drawImage(img, 0, 0, w, h);
+
+    bufCtxC.save();
+    bufCtxC.globalCompositeOperation = 'screen';
+    bufCtxC.globalAlpha = 0.5;
+    bufCtxC.filter = 'brightness(1.5)';
+    bufCtxC.drawImage(img, 0, 0, w, h);
+    bufCtxC.restore();
+
+    // Fill-flash shadow lift — a soft, blurred, brightened pass screened
+    // on top opens up shadows the way a broad, diffuse source does on
+    // whatever it's actually illuminating.
+    const blurPx = Math.max(4, Math.min(w, h) * 0.02);
+    bufCtxC.save();
+    bufCtxC.globalCompositeOperation = 'screen';
+    bufCtxC.globalAlpha = 0.3;
+    bufCtxC.filter = `blur(${blurPx}px) brightness(1.3)`;
+    bufCtxC.drawImage(img, 0, 0, w, h);
+    bufCtxC.restore();
+    bufCtxC.filter = 'none';
+
+    // Contrast/saturation punch, applied as a filtered copy so it never
+    // clips as hard as it would layered directly onto raw screen output.
+    bufCtxB.clearRect(0, 0, w, h);
+    bufCtxB.filter = 'contrast(1.1) saturate(1.06)';
+    bufCtxB.drawImage(bufC, 0, 0);
+    bufCtxB.filter = 'none';
+
+    // White balance tint (cool/neutral/warm).
+    if (warmth !== 0) {
+      bufCtxB.save();
+      bufCtxB.globalCompositeOperation = 'overlay';
+      bufCtxB.globalAlpha = 0.18;
+      bufCtxB.fillStyle = warmth > 0 ? 'rgba(255,214,168,1)' : 'rgba(200,222,255,1)';
+      bufCtxB.fillRect(0, 0, w, h);
+      bufCtxB.restore();
+    }
+
+    // Mask the lit layer with a radial falloff: opaque near the light
+    // source, fading to fully transparent by the edges of the frame.
+    const cx = w / 2, cy = h * 0.42;
+    const r = Math.max(w, h) * 0.68;
+    const grad = bufCtxB.createRadialGradient(cx, cy, 0, cx, cy, r);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.3, 'rgba(255,255,255,0.92)');
+    grad.addColorStop(0.55, 'rgba(255,255,255,0.5)');
+    grad.addColorStop(0.8, 'rgba(255,255,255,0.1)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    bufCtxB.save();
+    bufCtxB.globalCompositeOperation = 'destination-in';
+    bufCtxB.fillStyle = grad;
+    bufCtxB.fillRect(0, 0, w, h);
+    bufCtxB.restore();
+
+    // Composite the masked lit layer over the dimmed ambient base — bright
+    // falling off to dim, in one pass, with a seamless blend between them.
+    bufCtxA.globalCompositeOperation = 'source-over';
+    bufCtxA.drawImage(bufB, 0, 0);
+
+    return bufA;
+  }
+
   function render() {
     if (!img) return;
     const w = canvas.width, h = canvas.height;
     const t = intensitySlider.value / 100; // 0..1 strength
 
     ctx.clearRect(0, 0, w, h);
-
-    if (showingOriginal || t === 0) {
-      ctx.filter = 'none';
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = 1;
-      ctx.drawImage(img, 0, 0, w, h);
-      return;
-    }
-
-    // 1) Base exposure/contrast/saturation lift — the overall "flash" punch
-    const brightness = 1 + 0.22 * t;
-    const contrast = 1 + 0.14 * t;
-    const saturate = 1 + 0.06 * t;
-    ctx.filter = `brightness(${brightness}) contrast(${contrast}) saturate(${saturate})`;
+    ctx.filter = 'none';
     ctx.globalCompositeOperation = 'source-over';
+
+    // Always draw the real photo first.
     ctx.globalAlpha = 1;
     ctx.drawImage(img, 0, 0, w, h);
-    ctx.filter = 'none';
 
-    // 2) Fill-flash shadow lift — a soft, blurred, brightened pass screened
-    // on top opens up shadows the way a ringlight's broad, diffuse source does.
-    const blurPx = Math.max(4, Math.min(w, h) * 0.02);
-    ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-    ctx.globalAlpha = 0.32 * t;
-    ctx.filter = `blur(${blurPx}px) brightness(1.35)`;
-    ctx.drawImage(img, 0, 0, w, h);
-    ctx.restore();
-    ctx.filter = 'none';
+    if (showingOriginal || t === 0) return;
 
-    // 3) White balance tint (cool/neutral/warm) via a soft overlay wash.
-    if (warmth !== 0) {
-      ctx.save();
-      ctx.globalCompositeOperation = 'overlay';
-      ctx.globalAlpha = 0.16 * t;
-      ctx.fillStyle = warmth > 0 ? 'rgba(255,214,168,1)' : 'rgba(200,222,255,1)';
-      ctx.fillRect(0, 0, w, h);
-      ctx.restore();
-    }
-
-    // 4) Center-weighted glow with edge falloff — the ringlight signature:
-    // even, bright light on the subject, gently darkening toward the frame edge.
-    ctx.save();
-    const cx = w / 2, cy = h * 0.44;
-    const r = Math.max(w, h) * 0.8;
-    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-    grad.addColorStop(0, `rgba(255,255,255,${0.14 * t})`);
-    grad.addColorStop(0.5, 'rgba(255,255,255,0)');
-    grad.addColorStop(1, `rgba(0,0,0,${0.24 * t})`);
-    ctx.globalCompositeOperation = 'overlay';
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, w, h);
-    ctx.restore();
-
-    ctx.globalCompositeOperation = 'source-over';
+    // Cross-fade in the fully flash-lit, falloff-masked version.
+    const flashLayer = buildFlashLayer(w, h);
+    ctx.globalAlpha = t;
+    ctx.drawImage(flashLayer, 0, 0);
     ctx.globalAlpha = 1;
   }
 
