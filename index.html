@@ -351,7 +351,7 @@
     bufC.width = w; bufC.height = h;
 
     // Dimmed ambient base — what the light doesn't reach.
-    bufCtxA.filter = 'brightness(0.74) contrast(1.05)';
+    bufCtxA.filter = 'brightness(0.58) contrast(1.08)';
     bufCtxA.drawImage(img, 0, 0, w, h);
     bufCtxA.filter = 'none';
 
@@ -400,14 +400,18 @@
     }
 
     // Mask the lit layer with a radial falloff: opaque near the light
-    // source, fading to fully transparent by the edges of the frame.
+    // source, fading to fully transparent well before the frame edges —
+    // sized off the SHORT dimension so the hot zone stays a contained
+    // "pool of light" instead of stretching down the whole long axis of a
+    // portrait photo (which read as "the whole picture got brighter").
     const cx = w / 2, cy = h * 0.42;
-    const r = Math.max(w, h) * 0.68;
+    const r = Math.min(w, h) * 0.62;
     const grad = bufCtxB.createRadialGradient(cx, cy, 0, cx, cy, r);
     grad.addColorStop(0, 'rgba(255,255,255,1)');
-    grad.addColorStop(0.3, 'rgba(255,255,255,0.92)');
-    grad.addColorStop(0.55, 'rgba(255,255,255,0.5)');
-    grad.addColorStop(0.8, 'rgba(255,255,255,0.1)');
+    grad.addColorStop(0.2, 'rgba(255,255,255,0.88)');
+    grad.addColorStop(0.4, 'rgba(255,255,255,0.45)');
+    grad.addColorStop(0.6, 'rgba(255,255,255,0.12)');
+    grad.addColorStop(0.8, 'rgba(255,255,255,0)');
     grad.addColorStop(1, 'rgba(255,255,255,0)');
     bufCtxB.save();
     bufCtxB.globalCompositeOperation = 'destination-in';

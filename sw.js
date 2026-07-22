@@ -1,4 +1,4 @@
-const CACHE = 'glow-v1';
+const CACHE = 'glow-v2';
 const ASSETS = ['./', './index.html', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', (e) => {
